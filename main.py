@@ -1,17 +1,20 @@
 import telebot
-from groq import Groq
+import google.generativeai as genai
 import time
 import os
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- Configuration (Safe Mode) ---
-# Keys දැන් ආරක්ෂිතව Koyeb එකෙන් ලබා ගනී
-API_TOKEN = os.getenv('TELEGRAM_TOKEN')
-GROQ_KEY = os.getenv('GROQ_API_KEY')
-ADMIN_ID = int(os.getenv('ADMIN_ID', '2131449554'))
+# --- Configuration (Direct Integration) ---
+API_TOKEN = "8798446814:AAF4A2IjSvfblsiPnME54FviDyjd4Wc0E3E"
+GEMINI_KEY = "AIzaSyB8QO7rzEfdgZDDXlugEdBtJFELLvzztGc"
+ADMIN_ID = 2131449554
+BOT_NAME = "Okehot_Ai" 
+
+# Gemini Setup
+genai.configure(api_key=GEMINI_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash') # වේගවත් වැඩට මේ මොඩල් එක හොඳයි
 
 bot = telebot.TeleBot(API_TOKEN)
-client = Groq(api_key=GROQ_KEY)
 
 user_db = {}
 
@@ -43,7 +46,7 @@ def start(message):
     btn2 = InlineKeyboardButton("😇 I am Under 18 (SFW Mode)", callback_data="age_under")
     markup.add(btn1, btn2)
     
-    welcome_text = "🌟 *MitsuAlpha AI වෙත සාදරයෙන් පිළිගනිමු!*\n\nඉදිරියට යාමට කරුණාකර ඔබේ වයස තහවුරු කරන්න:"
+    welcome_text = f"🌟 *{BOT_NAME} වෙත සාදරයෙන් පිළිගනිමු!*\n\nඉදිරියට යාමට කරුණාකර ඔබේ වයස තහවුරු කරන්න:"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('age_'))
@@ -57,32 +60,11 @@ def age_selection(call):
         msg = "😇 SFW Mode සක්‍රීයයි! අපි සාමාන්‍ය විදියට චැට් කරමු."
     bot.edit_message_text(msg, call.message.chat.id, call.message.message_id)
 
-@bot.message_handler(commands=['share'])
-def share(message):
-    bot_user = bot.get_me().username
-    link = f"https://t.me/{bot_user}?start={message.chat.id}"
-    bot.reply_to(message, f"🎁 මේ ලින්ක් එක යාළුවන්ට යවන්න. එයාලා ආවම ඔයාට *Points 20ක්* ලැබෙනවා!\n\n🔗 `{link}`", parse_mode="Markdown")
-
-@bot.message_handler(commands=['status'])
-def status(message):
-    user = get_user(message.chat.id)
-    bot.reply_to(message, f"📊 Points: {user['points']}/1000\n⏳ Refill: විනාඩි 10කට 10 Points")
-
-@bot.message_handler(commands=['setup'])
-def setup_char(message):
-    msg = bot.reply_to(message, "මම කවුරු වෙන්නද ඕනේ? (නම, ගතිගුණ එවන්න)")
-    bot.register_next_step_handler(msg, save_char)
-
-def save_char(message):
-    user = get_user(message.chat.id)
-    user["char_desc"] = message.text
-    bot.reply_to(message, "✅ Setup Complete!")
-
 @bot.message_handler(func=lambda message: True)
 def main_chat(message):
     user = get_user(message.chat.id)
     if user["points"] < 10:
-        bot.reply_to(message, "⚠️ Points මදි!")
+        bot.reply_to(message, "⚠️ Points මදි! විනාඩි කිහිපයකින් උත්සාහ කරන්න.")
         return
     user["points"] -= 10
 
@@ -92,14 +74,10 @@ def main_chat(message):
         system_prompt = f"You are {user['char_desc']}. Keep conversation clean and PG-13. No sexual content. Describe scene in [square brackets]."
 
     try:
-        completion = client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message.text}
-            ],
-        )
-        ans = completion.choices[0].message.content
+        # Gemini AI Call
+        response = model.generate_content(f"{system_prompt}\n\nUser: {message.text}")
+        ans = response.text
+        
         text_msg = ans.split('[')[0].strip()
         img_prompt = ans.split('[')[-1].split(']')[0] if '[' in ans else "anime girl"
         
@@ -108,7 +86,8 @@ def main_chat(message):
         
         url = f"https://image.pollinations.ai/prompt/{img_prompt.replace(' ', '%20')}{img_tag.replace(' ', '%20')}?width=1024&height=1024&model=anime"
         bot.send_photo(message.chat.id, url, caption=f"{text_msg}\n\n🔋 Power: {user['points']}")
-    except:
-        bot.reply_to(message, "Error! පසුව උත්සාහ කරන්න.")
+    except Exception as e:
+        print(f"Error: {e}")
+        bot.reply_to(message, "පද්ධතියේ දෝෂයකි. කරුණාකර පසුව උත්සාහ කරන්න.")
 
 bot.infinity_polling()
